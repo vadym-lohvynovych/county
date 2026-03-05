@@ -1,5 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { supabase } from "./lib/supabase";
+
   const plusIcon = "/plus.svg";
   const minusIcon = "/minus.svg";
   const closeIcon = "/close.svg";
@@ -15,8 +17,17 @@
   let showModal = false;
   let newTitle = "";
   let newInitialCount = 0;
+  let user: any = null;
 
   onMount(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      user = session?.user ?? null;
+    });
+
+    supabase.auth.onAuthStateChange((_event, session) => {
+      user = session?.user ?? null;
+    });
+
     const saved = localStorage.getItem("county-counters");
     if (saved) {
       try {
@@ -93,9 +104,38 @@
   function deleteCounter(id: string) {
     counters = counters.filter((counter) => counter.id !== id);
   }
+
+  async function signInWithGoogle() {
+    await supabase.auth.signInWithOAuth({
+      provider: "google",
+    });
+  }
+
+  async function signOut() {
+    await supabase.auth.signOut();
+  }
 </script>
 
 <main class="container">
+  <div class="top-auth">
+    {#if !user}
+      <span class="auth-hint">Sign in to save data</span>
+      <button class="btn-minimal google" on:click={signInWithGoogle}>
+        Sign in
+      </button>
+    {:else}
+      <div class="user-profile">
+        {#if user.user_metadata?.avatar_url}
+          <img class="avatar" src={user.user_metadata.avatar_url} alt="Avatar" />
+        {/if}
+        <div class="user-details">
+          <span class="user-name">{user.user_metadata?.full_name || user.email}</span>
+          <button class="btn-minimal signout" on:click={signOut}>Sign out</button>
+        </div>
+      </div>
+    {/if}
+  </div>
+
   <header>
     <h1>County</h1>
     <p>Track your habits and daily activities</p>
@@ -241,6 +281,85 @@
     font-size: 1.1rem;
     color: #718096;
     margin: 0;
+  }
+
+  .top-auth {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    background: white;
+    padding: 0.5rem 1rem;
+    border-radius: 100px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    z-index: 10;
+  }
+
+  .auth-hint {
+    font-size: 0.85rem;
+    color: #718096;
+  }
+
+  .btn-minimal {
+    background: none;
+    border: none;
+    font-size: 0.85rem;
+    font-weight: 500;
+    cursor: pointer;
+    color: #4a5568;
+    padding: 0;
+    transition: color 0.2s;
+  }
+
+  .btn-minimal:hover {
+    color: #2d3748;
+  }
+
+  .btn-minimal.google {
+    color: #4285f4;
+    font-weight: 600;
+  }
+  
+  .btn-minimal.google:hover {
+    color: #3367d6;
+  }
+
+  .user-profile {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    object-fit: cover;
+  }
+
+  .user-details {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    line-height: 1.2;
+  }
+
+  .user-name {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #2d3748;
+  }
+  
+  .btn-minimal.signout {
+    font-size: 0.75rem;
+    color: #718096;
+  }
+  
+  .btn-minimal.signout:hover {
+    color: #e53e3e;
+    text-decoration: underline;
   }
 
   .actions {
@@ -518,6 +637,12 @@
   @media (max-width: 768px) {
     .container {
       padding: 1rem;
+      padding-top: 4rem; /* prevent header overlapping with auth */
+    }
+
+    .top-auth {
+      top: 0.5rem;
+      right: 0.5rem;
     }
 
     header h1 {
