@@ -5,6 +5,7 @@
   const plusIcon = "/plus.svg";
   const minusIcon = "/minus.svg";
   const closeIcon = "/close.svg";
+  const googleIcon = "/google.svg";
 
   type Counter = {
     id: string;
@@ -120,8 +121,8 @@
   <div class="top-auth">
     {#if !user}
       <span class="auth-hint">Sign in to save data</span>
-      <button class="btn-minimal google" on:click={signInWithGoogle}>
-        Sign in
+      <button class="btn-minimal google" aria-label="Sign in with Google" on:click={signInWithGoogle}>
+        <img src={googleIcon} alt="Google" width="20" height="20" />
       </button>
     {:else}
       <div class="user-profile">
@@ -291,7 +292,7 @@
     align-items: center;
     gap: 0.75rem;
     background: white;
-    padding: 0.5rem 1rem;
+    padding: 0.6rem;
     border-radius: 100px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
     z-index: 10;
@@ -318,12 +319,17 @@
   }
 
   .btn-minimal.google {
-    color: #4285f4;
-    font-weight: 600;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.25rem;
+    border-radius: 50%;
+    transition: background-color 0.2s, transform 0.2s;
   }
   
   .btn-minimal.google:hover {
-    color: #3367d6;
+    background-color: #f7fafc;
+    transform: scale(1.05);
   }
 
   .user-profile {
