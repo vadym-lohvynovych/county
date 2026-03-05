@@ -1,34 +1,37 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { supabase } from "./lib/supabase";
+  import type { User } from "@supabase/supabase-js";
+  import { CountersModel, type Counter } from "./model/counters";
+  import { AuthModel } from "./model/auth";
+  import { clearSearchParams } from "./lib/clearSearchParams";
 
   const plusIcon = "/plus.svg";
   const minusIcon = "/minus.svg";
   const closeIcon = "/close.svg";
   const googleIcon = "/google.svg";
 
-  type Counter = {
-    id: string;
-    title: string;
-    count: number;
-  };
-
   let counters: Counter[] = [];
   let isLoaded = false;
   let showModal = false;
   let newTitle = "";
   let newInitialCount = 0;
-  let user: any = null;
+  let user: User | null = null;
 
-  onMount(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      user = session?.user ?? null;
+  function getCountersFromSupabase(user: User) {
+    CountersModel.getCounters(user.id).then((data) => {
+      if (data && data.length > 0) {
+        counters = data;
+      }
     });
+  }
 
-    supabase.auth.onAuthStateChange((_event, session) => {
-      user = session?.user ?? null;
+  function syncLocalCountersToSupabase(user: User) {
+    CountersModel.upsertCounters(counters, user.id).then(() => {
+      getCountersFromSupabase(user);
     });
+  }
 
+  function getCountersFromLocalStorage() {
     const saved = localStorage.getItem("county-counters");
     if (saved) {
       try {
@@ -40,12 +43,38 @@
         console.error("Failed to parse counters from localStorage", e);
       }
     }
+  }
+
+  onMount(async () => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const isOauthRedirect = urlParams.has(AuthModel.OAUTH_SUCCESS_KEY);
+    getCountersFromLocalStorage();
     isLoaded = true;
+    const currentUser = await AuthModel.getUser();
+
+    if (isOauthRedirect) {
+      clearSearchParams();
+
+      if (currentUser && counters.length > 0) {
+        syncLocalCountersToSupabase(currentUser);
+      }
+    } else if (currentUser && counters.length === 0) {
+      getCountersFromSupabase(currentUser);
+    }
+
+    const unsubscribe = AuthModel.subscribeToAuthChanges((currentUser) => {
+      user = currentUser;
+    });
+
+    return unsubscribe;
   });
 
   // Save to localStorage whenever counters change
   $: if (isLoaded) {
-    localStorage.setItem("county-counters", JSON.stringify(counters));
+    localStorage.setItem(
+      "county-counters",
+      JSON.stringify(counters.map((c) => ({ ...c, created_at: undefined }))),
+    );
   }
 
   $: if (showModal) {
@@ -68,7 +97,7 @@
     }
   }
 
-  function openModal() {
+  async function openModal() {
     showModal = true;
     newTitle = "";
     newInitialCount = 0;
@@ -78,42 +107,62 @@
     showModal = false;
   }
 
-  function createCounter() {
+  async function createCounter() {
     if (newTitle.trim()) {
       const newCounter: Counter = {
-        id: Date.now().toString(),
+        id: crypto.randomUUID(),
         title: newTitle.trim(),
-        count: newInitialCount,
+        counter: newInitialCount,
       };
       counters = [...counters, newCounter];
       closeModal();
+
+      if (user) {
+        await CountersModel.createCounter(newCounter, user.id);
+      }
     }
   }
 
-  function incrementCounter(id: string) {
+  async function incrementCounter(id: string) {
     counters = counters.map((counter) =>
-      counter.id === id ? { ...counter, count: counter.count + 1 } : counter,
+      counter.id === id
+        ? { ...counter, counter: counter.counter + 1 }
+        : counter,
     );
+
+    if (user) {
+      const counter = counters.find((c) => c.id === id)!;
+      await CountersModel.updateCount(counter.id, counter.counter, user.id);
+    }
   }
 
-  function decrementCounter(id: string) {
+  async function decrementCounter(id: string) {
     counters = counters.map((counter) =>
-      counter.id === id ? { ...counter, count: counter.count - 1 } : counter,
+      counter.id === id
+        ? { ...counter, counter: counter.counter - 1 }
+        : counter,
     );
+
+    if (user) {
+      const counter = counters.find((c) => c.id === id)!;
+      await CountersModel.updateCount(counter.id, counter.counter, user.id);
+    }
   }
 
-  function deleteCounter(id: string) {
+  async function deleteCounter(id: string) {
     counters = counters.filter((counter) => counter.id !== id);
+
+    if (user) {
+      await CountersModel.deleteCounter(id, user.id);
+    }
   }
 
   async function signInWithGoogle() {
-    await supabase.auth.signInWithOAuth({
-      provider: "google",
-    });
+    await AuthModel.signInWithGoogle();
   }
 
   async function signOut() {
-    await supabase.auth.signOut();
+    await AuthModel.signOut();
   }
 </script>
 
@@ -121,17 +170,29 @@
   <div class="top-auth">
     {#if !user}
       <span class="auth-hint">Sign in to save data</span>
-      <button class="btn-minimal google" aria-label="Sign in with Google" on:click={signInWithGoogle}>
+      <button
+        class="btn-minimal google"
+        aria-label="Sign in with Google"
+        on:click={signInWithGoogle}
+      >
         <img src={googleIcon} alt="Google" width="20" height="20" />
       </button>
     {:else}
       <div class="user-profile">
         {#if user.user_metadata?.avatar_url}
-          <img class="avatar" src={user.user_metadata.avatar_url} alt="Avatar" />
+          <img
+            class="avatar"
+            src={user.user_metadata.avatar_url}
+            alt="Avatar"
+          />
         {/if}
         <div class="user-details">
-          <span class="user-name">{user.user_metadata?.full_name || user.email}</span>
-          <button class="btn-minimal signout" on:click={signOut}>Sign out</button>
+          <span class="user-name"
+            >{user.user_metadata?.full_name || user.email}</span
+          >
+          <button class="btn-minimal signout" on:click={signOut}
+            >Sign out</button
+          >
         </div>
       </div>
     {/if}
@@ -158,7 +219,7 @@
       {#each counters as counter (counter.id)}
         <div class="counter-card">
           <h3 class="counter-title">{counter.title}</h3>
-          <span class="count">{counter.count || 0}</span>
+          <span class="count">{counter.counter || 0}</span>
           <div class="counter-controls">
             <button
               class="control-btn decrement"
@@ -251,7 +312,8 @@
 
   :global(body) {
     margin: 0;
-    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI",
+      Roboto, "Helvetica Neue", Arial, sans-serif;
     background: #f2f2f7; /* Apple system gray background */
     min-height: 100vh;
     color: #1c1c1e; /* System primary text */
@@ -333,7 +395,7 @@
     border-radius: 50%;
     transition: background-color 0.2s;
   }
-  
+
   .btn-minimal.google:hover {
     background-color: #e5e5ea;
   }
@@ -349,7 +411,7 @@
     height: 28px;
     border-radius: 50%;
     object-fit: cover;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
   }
 
   .user-details {
@@ -364,14 +426,14 @@
     font-weight: 600;
     color: #000;
   }
-  
+
   .btn-minimal.signout {
     font-size: 0.75rem;
     color: #ff3b30; /* iOS Red */
     font-weight: 500;
     margin-top: 2px;
   }
-  
+
   .btn-minimal.signout:hover {
     opacity: 0.7;
     text-decoration: none;
@@ -393,7 +455,9 @@
     color: white;
     cursor: pointer;
     box-shadow: 0 4px 12px rgba(0, 122, 255, 0.3);
-    transition: opacity 0.2s, background-color 0.2s;
+    transition:
+      opacity 0.2s,
+      background-color 0.2s;
     display: flex;
     align-items: center;
     gap: 0.4rem;
@@ -434,7 +498,9 @@
     display: flex;
     align-items: center;
     gap: 1.25rem;
-    transition: background-color 0.2s, box-shadow 0.2s;
+    transition:
+      background-color 0.2s,
+      box-shadow 0.2s;
     border: 1px solid rgba(0, 0, 0, 0.02);
   }
 
@@ -480,12 +546,14 @@
     border-radius: 8px;
     font-size: 1rem;
     cursor: pointer;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
     color: #1c1c1e;
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: opacity 0.1s, background-color 0.1s;
+    transition:
+      opacity 0.1s,
+      background-color 0.1s;
   }
 
   .control-btn:active {
@@ -510,7 +578,9 @@
     align-items: center;
     justify-content: center;
     border-radius: 50%;
-    transition: background-color 0.2s, opacity 0.1s;
+    transition:
+      background-color 0.2s,
+      opacity 0.1s;
   }
 
   .delete-btn img {
@@ -528,7 +598,7 @@
     opacity: 1;
     filter: invert(1);
   }
-  
+
   .delete-btn:active {
     opacity: 0.7;
   }
@@ -559,7 +629,7 @@
     box-shadow: 0 24px 48px rgba(0, 0, 0, 0.2);
     animation: modalSlideIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
     overflow: hidden;
-    border: 1px solid rgba(255,255,255,0.5);
+    border: 1px solid rgba(255, 255, 255, 0.5);
   }
 
   @keyframes modalSlideIn {
@@ -639,7 +709,9 @@
     border-radius: 12px;
     font-size: 1.05rem;
     color: #1c1c1e;
-    transition: background-color 0.2s, box-shadow 0.2s;
+    transition:
+      background-color 0.2s,
+      box-shadow 0.2s;
   }
 
   input::placeholder {
@@ -667,7 +739,9 @@
     font-size: 1rem;
     font-weight: 600;
     cursor: pointer;
-    transition: opacity 0.2s, background-color 0.2s;
+    transition:
+      opacity 0.2s,
+      background-color 0.2s;
   }
 
   .cancel-btn {
