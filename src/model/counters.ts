@@ -1,9 +1,12 @@
+import type { RealtimePostgresChangesPayload } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabase";
 
 export type Counter = {
   id: string;
   title: string;
   counter: number;
+  user_id: string;
+  created_at: string;
 };
 
 export const CountersModel = {
@@ -46,5 +49,25 @@ export const CountersModel = {
     return supabase
       .from("counters")
       .upsert(countersWithUserId, { onConflict: "id" });
+  },
+  subscribeToCounterChanges: (
+    userId: string,
+    callback: (event: RealtimePostgresChangesPayload<Counter>) => void,
+  ) => {
+    const subscription = supabase
+      .channel("public:counters")
+      .on<Counter>(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "counters",
+          filter: `user_id=eq.${userId}`,
+        },
+        callback,
+      )
+      .subscribe();
+
+    return () => supabase.removeChannel(subscription);
   },
 };

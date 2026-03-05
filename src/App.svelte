@@ -48,8 +48,10 @@
   onMount(async () => {
     const urlParams = new URLSearchParams(window.location.search);
     const isOauthRedirect = urlParams.has(AuthModel.OAUTH_SUCCESS_KEY);
+
     getCountersFromLocalStorage();
     isLoaded = true;
+
     const currentUser = await AuthModel.getUser();
 
     if (isOauthRedirect) {
@@ -62,11 +64,23 @@
       getCountersFromSupabase(currentUser);
     }
 
-    const unsubscribe = AuthModel.subscribeToAuthChanges((currentUser) => {
+    AuthModel.subscribeToAuthChanges((currentUser) => {
       user = currentUser;
     });
 
-    return unsubscribe;
+    if (currentUser) {
+      CountersModel.subscribeToCounterChanges(currentUser.id, (event) => {
+        if (event.eventType === "UPDATE") {
+          counters = counters.map((counter) =>
+            counter.id === event.new.id ? event.new : counter,
+          );
+        } else if (event.eventType === "INSERT") {
+          counters = [...counters.filter((counter) => counter.id !== event.new.id), event.new];
+        } else if (event.eventType === "DELETE") {
+          counters = counters.filter((counter) => counter.id !== event.old.id);
+        }
+      });
+    }
   });
 
   // Save to localStorage whenever counters change

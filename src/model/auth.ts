@@ -23,9 +23,12 @@ export const AuthModel = {
       console.error("Error signing out:", error);
     }
   },
-  subscribeToAuthChanges: (callback: (user: User | null, event: AuthChangeEvent) => void) => {
-    return supabase.auth.onAuthStateChange((event, session) => {
+  subscribeToAuthChanges: (
+    callback: (user: User | null, event: AuthChangeEvent) => void,
+  ) => {
+    const subscription = supabase.auth.onAuthStateChange((event, session) => {
       callback(session?.user ?? null, event);
     });
+    return () => subscription.data.subscription.unsubscribe();
   },
 };
