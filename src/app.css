@@ -31,6 +31,10 @@ h1 {
   line-height: 1.1;
 }
 
+p {
+  margin: 0;
+}
+
 #app {
   text-align: center;
 }
