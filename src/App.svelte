@@ -3,8 +3,6 @@
   const plusIcon = "/plus.svg";
   const minusIcon = "/minus.svg";
   const closeIcon = "/close.svg";
-  const importIcon = "/import.svg";
-  const exportIcon = "/export.svg";
 
   type Counter = {
     id: string;
@@ -95,60 +93,7 @@
   function deleteCounter(id: string) {
     counters = counters.filter((counter) => counter.id !== id);
   }
-
-  function exportCounters() {
-    const dataStr = JSON.stringify(counters, null, 2);
-    const dataBlob = new Blob([dataStr], { type: "application/json" });
-    const url = URL.createObjectURL(dataBlob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `county-counters-${new Date().toISOString().split("T")[0]}.json`;
-    link.click();
-    URL.revokeObjectURL(url);
-  }
-
-  function importCounters() {
-    const input = document.createElement("input");
-    input.type = "file";
-    input.accept = ".json";
-    input.onchange = (e) => {
-      const file = (e.target as HTMLInputElement).files?.[0];
-      if (file) {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          try {
-            const importedCounters = JSON.parse(e.target?.result as string);
-            if (Array.isArray(importedCounters)) {
-              counters = [
-                ...counters,
-                ...importedCounters.map((counter) => ({
-                  ...counter,
-                  id:
-                    Date.now().toString() +
-                    Math.random().toString(36).substr(2, 9),
-                })),
-              ];
-            }
-          } catch (error) {
-            console.error("Failed to import counters:", error);
-            alert("Invalid JSON file");
-          }
-        };
-        reader.readAsText(file);
-      }
-    };
-    input.click();
-  }
 </script>
-
-<div class="import-export">
-  <button class="utility-btn" on:click={exportCounters} title="Export counters">
-    <img src={exportIcon} alt="Export" />
-  </button>
-  <button class="utility-btn" on:click={importCounters} title="Import counters">
-    <img src={importIcon} alt="Import" />
-  </button>
-</div>
 
 <main class="container">
   <header>
@@ -303,37 +248,6 @@
     justify-content: center;
     margin-bottom: 2rem;
   }
-
-  .import-export {
-    display: flex;
-    justify-content: flex-end;
-    gap: 0.5rem;
-    width: 100%;
-    padding: 1rem;
-  }
-
-  .utility-btn {
-    background: white;
-    border: 1px solid #e2e8f0;
-    padding: 0.5rem;
-    border-radius: 6px;
-    color: #4a5568;
-    cursor: pointer;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
-    transition: all 0.2s ease;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 2.5rem;
-    height: 2.5rem;
-  }
-
-  .utility-btn:hover {
-    background: #f7fafc;
-    border-color: #cbd5e0;
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.12);
-  }
-
   .create-btn {
     background: white;
     border: none;
